@@ -1,0 +1,15 @@
+2573d02c43238fee7520b975e8b7d2b5 *DESCRIPTION
+82485fc68cf709a4bb10405ab11fe23a *NAMESPACE
+8113bb0cff5190d2605394a83e830702 *R/DetMCD.R
+7146ffb2ea48777ad6a975b301f9970a *man/DetMCD-package.Rd
+7c0320aa17fd828b54a275e94733bc59 *man/DetMCD.Rd
+bf4f8e14ee46be4c5ae18d01bfbceb19 *man/DetMCD_CS.Rd
+500bf8804aa3252a1e5a6cb9853a0ae6 *man/DetMCD_RW.Rd
+5d78d2f2acedfe1beba548ec51c6875c *man/DetMCD_SP.Rd
+3d4ad7e8038adc4a703de9553df2627e *man/plot.DetMCD.Rd
+44541e2ae6293a9c50d3c45757ff6552 *man/quanff.Rd
+dab294b7786a7a49c6bf38e5dc6b2d74 *man/xtractR_M.Rd
+136c542e248b9d2dc68ac7ffda65e688 *src/DetMCD_1.cpp
+2ff2ce3ab0376a260efa793be0837df3 *src/DetMCD_2.cpp
+dd80113f650478da3ba1194ce117badd *src/Makevars
+a68f199e32889b4dfd181da114dc6adc *src/Makevars.win

@@ -1,0 +1,23 @@
+Package: DetMCD
+Type: Package
+Title: DetMCD Algorithm (Robust and Deterministic Estimation of
+        Location and Scatter)
+Version: 0.0.1
+Date: 2013-01-13
+Depends: matrixStats, pcaPP (>= 1.8-1), robustbase, MASS
+Suggests: mvtnorm
+LinkingTo: Rcpp, RcppEigen
+Description: DetMCD is a new algorithm for robust and deterministic estimation of location and scatter. The benefits of robust and deterministic estimation are explained in Hubert, M., Rousseeuw, P.J. and Verdonck, T. (2012),"A deterministic algorithm for robust location and scatter", Journal of   Computational and Graphical Statistics, Volume 21, Number 3, Pages 618--637.
+License: GPL (>= 2)
+LazyLoad: yes
+Authors@R: c(person("Vakili", "Kaveh", role = c("aut", "cre"),
+	             email = "vakili.kaveh.email@gmail.com"),
+             person("Mia", "Hubert", role = "ths",
+                    email = "mia.hubert@wis.kuleuven.be"))
+Maintainer: Vakili Kaveh <vakili.kaveh.email@gmail.com>
+Author: Vakili Kaveh [aut, cre],
+  Mia Hubert [ths]
+Packaged: 2014-10-21 16:15:15 UTC; kaveh
+NeedsCompilation: yes
+Repository: CRAN
+Date/Publication: 2014-10-21 20:01:49
