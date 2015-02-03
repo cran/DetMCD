@@ -24,8 +24,9 @@ DetMCD<-function(X,h=NULL,alpha=0.75,scale_est="Auto",tol=1e-7){#h=NULL;alpha=0.
 	}
 	if(min(h)<n){
 		if(all(c("qn","tau","Auto")%in%scale_est==0)) stop("The scale_est not one of qn or tau or Auto")
-		if(scale_est=="Auto") scale_est<-if(nrow(Data)>1000) "tau" else "qn"
+		if(scale_est=="Auto") scale_est<-if(nrow(Data)>1000) "tau" else "Qn"
 		if(scale_est=="tau") scale_est<-"scaleTau2"
+		if(scale_est=="qn") scale_est<-"Qn"
 		sca<-apply(Data,2,scale_est)	
 		good_var<-(1:ncol(Data))[which(sca>tol)]
 		if (length(good_var)<p) print(paste((1:p)[-good_var]," did not have positive variance",sep=""))

@@ -1,7 +1,5 @@
-import(MASS)
-import(matrixStats)
-import(pcaPP)
 import(robustbase)
+S3method(plot,DetMCD)
 useDynLib(DetMCD)
 export("DetMCD")
 export("plot.DetMCD")
