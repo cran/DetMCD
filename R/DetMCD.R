@@ -1,4 +1,8 @@
-DetMCD<-function(X,h=NULL,alpha=0.75,scale_est="Auto",tol=1e-7){#h=NULL;alpha=0.75;scale_est="tau";tol=1e-7
+inQn<-function(x){
+	fit2<-.C("R_inQn",as.integer(length(x)),as.double(x),as.double(0.0),DUP=TRUE,PACKAGE="DetMCD")
+	fit2[[3]]
+}
+DetMCD<-function(X,h=NULL,alpha=0.75,scale_est="Auto",tol=1e-7){#h=NULL;alpha=0.5;scale_est="tau";tol=1e-7;X=x
 	na.x<-complete.cases(X)
 	if(sum(na.x)!=nrow(X)){	
 		X<-X[na.x,]
@@ -24,9 +28,9 @@ DetMCD<-function(X,h=NULL,alpha=0.75,scale_est="Auto",tol=1e-7){#h=NULL;alpha=0.
 	}
 	if(min(h)<n){
 		if(all(c("qn","tau","Auto")%in%scale_est==0)) stop("The scale_est not one of qn or tau or Auto")
-		if(scale_est=="Auto") scale_est<-if(nrow(Data)>1000) "tau" else "Qn"
+		if(scale_est=="Auto") scale_est<-if(nrow(Data)>1000) "tau" else "qn"
 		if(scale_est=="tau") scale_est<-"scaleTau2"
-		if(scale_est=="qn") scale_est<-"Qn"
+		if(scale_est=="qn") scale_est<-"qn"
 		sca<-apply(Data,2,scale_est)	
 		good_var<-(1:ncol(Data))[which(sca>tol)]
 		if (length(good_var)<p) print(paste((1:p)[-good_var]," did not have positive variance",sep=""))
@@ -38,8 +42,9 @@ DetMCD<-function(X,h=NULL,alpha=0.75,scale_est="Auto",tol=1e-7){#h=NULL;alpha=0.
 		Data<-sweep(Data,2,sca,FUN="/",check.margin=FALSE)
 		out1<-DetMCD_SP(Data=Data,scale_est=scale_est,tol=tol)
 		out2<-DetMCD_CS(Data=Data,scale_est=scale_est,h=h,out1=out1)
+		out2$crit<-out2$objfun+2*sum(log(sca))
 		out3<-lapply(1:length(h[h<n]),DetMCD_RW,Xw=X,scale_est=scale_est,out2=out2,alpha=alpha,hlst=h)
-		if(max(h)==n) out2[[length(out2)+1]]<-DetMCD_RW(1,hlst=min(h),Xw=X,out2=NULL,scale_est=scale_est,alpha=1)
+		if(max(h)==n) out3[[length(out3)+1]]<-DetMCD_RW(ll=1,hlst=min(h),Xw=X,out2=NULL,scale_est=scale_est,alpha=1)
 	} else {
 		out2<-vector("list",1)
 		out2[[1]]<-DetMCD_RW(1,hlst=min(h),Xw=X,out2=NULL,scale_est=scale_est,alpha=1)
@@ -57,10 +62,34 @@ DetMCD_CS<-function(Data,scale_est,h,out1){
 	n<-nrow(Data)
 	p<-ncol(Data)
 	hl<-length(h)
-	wM<-rep(0,hl*n)
+	hmin<-quanff(0.5,n,p);
+	wM<-matrix(0,n,hl)
 	if(scale_est=="qn") Mtype<-0 else Mtype<-1;
-	fit2<-.C("R_FastR",as.integer(n),as.integer(p),as.double(Data),as.double(out1),as.integer(Mtype),as.integer(h),as.integer(hl),as.integer(wM),as.integer(rep(1,hl)),as.integer(rep(1,hl)),as.integer(ncol(out1)),DUP=TRUE,PACKAGE="DetMCD")
-	return(list(mat=matrix(fit2[[8]],n,hl),which=fit2[[9]],nit=fit2[[10]]))
+	fit2<-.C("R_FastR",
+		as.integer(n),			#1
+		as.integer(p),			#2
+		as.double(Data),		#3
+		as.double(out1),		#4
+		as.integer(Mtype),		#5
+		as.integer(h),			#6
+		as.integer(hl),			#7
+		as.integer(wM),			#8
+		as.integer(rep(1,hl)),		#9
+		as.integer(rep(1,hl)),		#10
+		as.integer(ncol(out1)),		#11
+		as.integer(rep(1,ncol(out1))),	#12
+		as.double(rep(0.0,hl)),		#13
+		as.integer(rep(0,hmin)),	#14
+		as.integer(hmin),		#15
+		as.integer(0),			#16
+		DUP=TRUE,
+	PACKAGE="DetMCD")
+	if(fit2[[16]]==0){
+		out<-list(mat=matrix(fit2[[8]],n,hl),which=fit2[[9]],nit=fit2[[10]],objfun=fit2[[13]],ef=fit2[[16]])
+	} else {
+		out<-list(mat=fit2[[14]],which=fit2[[9]][1],objfun=fit2[[13]],ef=fit2[[16]])
+	}
+	return(out)
 }
 quanff<-function(alpha,n,p) return(floor(2*floor((n+p+1)/2)-n+2*(n-floor((n+p+1)/2))*alpha))
 DetMCD_SP<-function(Data,scale_est,tol){
@@ -68,27 +97,28 @@ DetMCD_SP<-function(Data,scale_est,tol){
 	n<-nrow(Data)
 	hsetsfull<-matrix(NA,p**2,6)
 	#1: Htan of Data:
-	y1<-apply(Data,2,tanh)
-	hsetsfull[,1]<-c(cor(y1))
-	y2<-apply(Data,2,rank)
-	hsetsfull[,2]<-c(cor(y2))
+	hsetsfull[,1]<-c(cor(tanh(Data)))
+	hsetsfull[,2]<-c(cor(Data,method="spearman"))
 	#3: Tukey normal scores
-	y3<-apply((y2-1/3)/(nrow(y2)+1/3),2,qnorm)
-	hsetsfull[,3]<-c(cor(y3))
+	y3<-qnorm((apply(Data,2L,rank)-1/3)/(n+1/3))
+	hsetsfull[,3]<-c(cor(y3,use="complete.obs"))
 	#4: Spatial sign cov matrix
-	znorm<-sqrt(rowSums(Data*Data))
-	ii<-which(znorm>tol)
-	zznorm<-sweep(Data[ii,],1,znorm[ii],FUN="/",check.margin=FALSE)
-	hsetsfull[,4]<-c(var(zznorm))
+	znorm<-sqrt(rowSums(Data^2))
+    	ii<-znorm>.Machine$double.eps
+    	x.nrmd<-Data
+    	x.nrmd[ii,]<-Data[ii,]/znorm[ii]
+	hsetsfull[,4]<-c(crossprod(x.nrmd))
 	#5: BACON
-	Hinit<-which(znorm<=quantile(znorm,0.5,type=1))
-	hsetsfull[,5]<-c(var(Data[Hinit,]))
+	ind5<-order(znorm);
+    	half<-ceiling(n/2);
+    	Hinit<-ind5[1:half]
+	hsetsfull[,5]<-c(cov(Data[Hinit,,drop=FALSE]))
 	Q<-rep(1.0,p**2)
 	if(scale_est=="qn") Mtype<-0 else Mtype<-1;
 	fit2<-.C("R_FastOGK",as.integer(n),as.integer(p),as.double(Data),as.double(Q),as.integer(Mtype),DUP=TRUE,PACKAGE="DetMCD")
 	#matrix(fit2[[4]],p,p)
 	#.25*(scaleTau2(Data[,1]+Data[,3])**2-scaleTau2(Data[,1]-Data[,3])**2);
-	#.25*(qn(Data[,1]+Data[,2])**2-qn(Data[,1]-Data[,2])**2)
+	#l<-2;c<-5;.25*(qn(Data[,l]+Data[,c])**2-qn(Data[,l]-Data[,c])**2)/matrix(fit2[[4]],p,p)[l,c]
 	hsetsfull[,6]<-fit2[[4]]
 	return(hsetsfull)
 }
@@ -107,31 +137,39 @@ DetMCD_tst<-function(Data,scale_est,tol){
 DetMCD_RW<-function(ll,hlst,Xw,out2=NULL,scale_est,alpha){	
 	p<-ncol(Xw);
 	n<-nrow(Xw)
-	h<-hlst[ll]
-	if(!is.null(out2))	Isets<-out2$mat[1:h,ll] else Isets<-1:n
-	mah<-mahalanobis(Xw,colMeans(Xw[Isets,]),var(Xw[Isets,]))	
-	factor<-quantile(mah,h/n,type=1)/qchisq(h/n,p)
-	raw.cov<-factor*var(Xw[Isets,])
-	raw.center<-colMeans(Xw[Isets,])
-	raw.objective<-log(det(var(Xw[Isets,])))
-	mah<-mah/factor
-	raw.rd<-sqrt(mah)
-	cutoff.rd<-sqrt(qchisq(0.975,df=p))
-	weights<-as.numeric(raw.rd<=cutoff.rd)
-	raw.wt<-weights
-	wstats<-cov.wt(Xw,wt=weights,center=TRUE)
-	rew.center<-wstats$center
-	rew.cov<-wstats$cov
-	mah<-mahalanobis(Xw,rew.center,rew.cov)
-	rew.rd<-sqrt(mah)
-	rew.flag<-as.numeric(rew.rd<=cutoff.rd)
-	names(raw.center)<-names(Xw)		
-	dimnames(raw.cov)<-list(dimnames(Xw)[[2]],dimnames(Xw)[[2]])
-	HrewS<-(1:n)[which(raw.wt>0)]
-	if(!is.null(out2))	best_sub<-out2$which else best_sub<-1
-	return(list(center=rew.center,cov=rew.cov,Hsubsets=HrewS,rd=rew.rd,best_sub<-best_sub,
-	flag=rew.flag,raw.center=raw.center,raw.cov=raw.cov,best=Isets,cutoff=cutoff.rd,
-	crit=exp(raw.objective),h=h,raw.rd=raw.rd,raw.wt=raw.wt,scale_est=scale_est,alpha=alpha[ll]))
+	if(is.null(out2))	out2$ef<-0
+	if(out2$ef==0){
+		h<-hlst[ll]
+		if(!is.null(out2$mat))	Isets<-out2$mat[1:h,ll] else Isets<-1:n
+		mah<-mahalanobis(Xw,colMeans(Xw[Isets,]),var(Xw[Isets,]))	
+		factor<-quantile(mah,min(h/n,(h-1)/n),type=1)/qchisq(min(h/n,(h-1)/n),p)
+		raw.cov<-factor*var(Xw[Isets,])
+		raw.center<-colMeans(Xw[Isets,])
+		raw.objective<-log(det(var(Xw[Isets,])))
+		mah<-mah/factor
+		raw.rd<-sqrt(mah)
+		cutoff.rd<-sqrt(qchisq(0.975,df=p))
+		weights<-as.numeric(raw.rd<=cutoff.rd)
+		raw.wt<-weights
+		wstats<-cov.wt(Xw,wt=weights,center=TRUE)
+		rew.center<-wstats$center
+		rew.cov<-wstats$cov
+		mah<-mahalanobis(Xw,rew.center,rew.cov)
+		rew.rd<-sqrt(mah)
+		rew.flag<-as.numeric(rew.rd<=cutoff.rd)
+		names(raw.center)<-names(Xw)		
+		dimnames(raw.cov)<-list(dimnames(Xw)[[2]],dimnames(Xw)[[2]])
+		HrewS<-(1:n)[which(raw.wt>0)]
+		if(!is.null(out2$mat))	best_sub<-out2$which else best_sub<-1
+		out<-list(center=rew.center,cov=rew.cov,Hsubsets=HrewS,rd=rew.rd,best_sub=best_sub,
+		flag=rew.flag,raw.center=raw.center,raw.cov=raw.cov,best=Isets,cutoff=cutoff.rd,
+		crit=raw.objective,h=h,raw.rd=raw.rd,raw.wt=raw.wt,scale_est=scale_est,alpha=alpha[ll])
+	} else {
+		warning("More than [(n+p+1)/2] of the observations lie on a hyperplane.")
+		Isets<-out2$mat
+		out<-list(center=colMeans(Xw[Isets,]),crit=-Inf,cov=var(Xw[Isets,]),Hsubsets=Isets,best_sub=out2$which)
+	}
+	return(out)
 }
 xtractR_M<-function(out2,X){
 	nEntry<-length(out2)
@@ -171,7 +209,7 @@ xtractR_M<-function(out2,X){
 	names(raw.objective)<-names(hlist)<-names(scale_est)<-slnames
 	if(!is.null(alpha))	names(alpha)<-slnames
 	dimnames(trcov)<-dimnames(raw.cov)<-list(rn,rn,slnames)
-	out3<-list(raw.center=raw.center,raw.cov=raw.cov,raw.crit=exp(raw.objective),
+	out3<-list(raw.center=raw.center,raw.cov=raw.cov,crit=raw.objective,
 	raw.rd=raw.rd,raw.wt=t(raw.wt),center=trcenter,cov=trcov,h=hlist,rd=rew.rd,
 	weights=t(rew.flag),scale_est=scale_est,X=X,alpha=alpha,best=best)
 	return(out3)
@@ -259,8 +297,8 @@ ask=(which=="all"&&dev.interactive()),cutoff=NULL,id.n,labels.id=rownames(x),cex
 		if(id.n<0 || id.n>n) stop(sQuote("id.n")," must be in{1,..,",n,"}")
     	}
     	which<-match.arg(which)
-    	md<-sqrt(mahalanobis(Data.X,colMeans(Data.X),var(Data.X),tol=tol))
-    	rd<-sqrt(mahalanobis(Data.X,m.cov$center,m.cov$cov,tol=tol))
+    	md<-sqrt(mahalanobis(Data.X,colMeans(Data.X),var(Data.X)))
+    	rd<-sqrt(mahalanobis(Data.X,m.cov$center,m.cov$cov))
     	op<-if(ask) par(ask=TRUE) else list()
     	on.exit(par(op))
     	if(which == "all" || which == "distance"){

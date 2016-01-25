@@ -24,12 +24,25 @@ using Eigen::VectorXd;
 using Eigen::VectorXi;
 using Eigen::RowVectorXd;
 
-extern double whimed_i(VectorXd& a,VectorXi& w,int n,VectorXd& a_cand,VectorXd& a_psrt,VectorXi& w_cand);
+extern double whimed_i(
+				VectorXd& a,
+				VectorXi& w,
+				int n,
+				VectorXd& a_cand,
+				VectorXd& a_psrt,
+				VectorXi& w_cand
+			);
 extern double qn(VectorXd& y);
 extern double Fmedian(VectorXd& x);
-extern double pCalc(VectorXd& x,double (*pCalcMethod)(VectorXd&));
+extern double pCalc(
+				VectorXd& x,
+				double (*pCalcMethod)(VectorXd&)
+			);
 extern double scaleTau2(VectorXd& x);
-MatrixXd FFOgkBasis(const MatrixXd x,const int& calcM){
+MatrixXd FFOgkBasis(
+			const MatrixXd x,
+			const int& calcM
+		){
 	//http://forum.codecall.net/topic/48576-function-pointers/#axzz2HU9vi2IB
 	double (*pFo[])(VectorXd&)={&qn,&scaleTau2}; 
 	const int p=x.cols();
@@ -60,7 +73,13 @@ MatrixXd FFOgkBasis(const MatrixXd x,const int& calcM){
 	return(U);
 }
 extern "C"{
-	void R_FastOGK(int* n,int* p,double* X,double* Q,int* cMet){
+	void R_FastOGK(
+				int* n,
+				int* p,
+				double* X,
+				double* Q,
+				int* cMet
+			){
 		const int CalcMet=*cMet;
 		MatrixXd xi=Map<MatrixXd>(X,*n,*p);		
 		MatrixXd Um=FFOgkBasis(xi,CalcMet);

@@ -7,6 +7,7 @@
 #include <iostream>
 #include <limits>
 #include <vector>
+#include <iomanip> 
 
 #include <inttypes.h>
 #include <math.h>
@@ -32,10 +33,17 @@ struct IdLess {
     }
     double const* values;
 };
-double whimed_i(VectorXd& a,VectorXi& w,int n,VectorXd& a_cand,VectorXd& a_psrt,VectorXi& w_cand){
+double whimed_i(
+			VectorXd& a,
+			VectorXi& w,
+			int& n,
+			VectorXd& a_cand,
+			VectorXd& a_psrt,
+			VectorXi& w_cand
+		){
 //Eigen-ized version of whimed_i. See citation("pcaPP")
 	int n2,i,k_cand,nn=n;/* sum of weights: `int' do overflow when  n ~>= 1e5 */
-	int wleft,wmid,wright,w_tot,wrest=0;
+	int64_t wleft,wmid,wright,w_tot,wrest=0;
 	double trial;
 	w_tot=w.head(n).sum();
 	do{
@@ -76,9 +84,10 @@ double whimed_i(VectorXd& a,VectorXi& w,int n,VectorXd& a_cand,VectorXd& a_psrt,
 		w.head(nn)=w_cand.head(nn);
 	} while(1); 
 }
-double qn(VectorXd& y){
+double qn(VectorXd& x){
 //Eigen-ized version of qn. See citation("pcaPP")
-		int n=y.rows();
+		const int n=x.rows();
+		VectorXd y=x;
 		VectorXd work=VectorXd::Zero(n);
     		VectorXi p=VectorXi::Zero(n);
     		VectorXi q=VectorXi::Zero(n);
@@ -208,25 +217,25 @@ double scaleTau2(VectorXd& x){
 	dwork1=(dwork1.array()>9.0).select(9.0,dwork1);	
 	return(sigma0*sqrt(dwork1.sum()/(n*Es2c)));
 }
-VectorXi Finitset(const MatrixXd& x,const MatrixXd& P,const int& calcM){
-	int p=x.cols();
-	int n=x.rows();
-	int half=(n+1)/2;	
+VectorXi Finitset(
+			const MatrixXd& x,
+			const MatrixXd& P,
+			const int& calcM,
+			const int& h0,
+			int& Svol
+		){
+	const int n=x.rows(),p=x.cols();	
 	double (*pFo[])(VectorXd&)={&qn,&scaleTau2}; 
 	SelfAdjointEigenSolver<Eigen::MatrixXd> solved(P);
 	MatrixXd Data2=x*solved.eigenvectors();
 	RowVectorXd lamba(p);
-	RowVectorXd lambc(p);
-	VectorXi SIndx1(n);
-	SIndx1.setLinSpaced(n,0,n-1);
 	VectorXd lambb(n);
-	VectorXd sy(n);
-	VectorXd sz(n);
 	for(int i=0;i<p;++i){
 		lambb=Data2.col(i);
 		lamba(i)=pCalc(lambb,pFo[calcM]);
 	}
 	Data2=x*(solved.eigenvectors()*lamba.asDiagonal().inverse()*solved.eigenvectors().transpose());
+	RowVectorXd lambc(p);
 	for(int i=0;i<p;++i){
 		lambb=Data2.col(i);
 		lambc(i)=Fmedian(lambb);
@@ -237,90 +246,160 @@ VectorXi Finitset(const MatrixXd& x,const MatrixXd& P,const int& calcM){
 	Data2*=solved.eigenvectors();
 	Data2*=lamba.asDiagonal().inverse();
 	lambb=Data2.cwiseAbs2().rowwise().sum();
-	std::nth_element(SIndx1.data(),SIndx1.data()+half,SIndx1.data()+SIndx1.size(),IdLess(lambb.data()));
-	return(SIndx1.head(half));
-}
-double CStep(const MatrixXd& x,VectorXi& hindx,const int& h0,const int& h){
-	int n=x.rows();
-	int p=x.cols();
-	MatrixXd xSub(h0,p);
-	MatrixXd b=MatrixXd::Identity(p,p);
-	MatrixXd xful=x;
-	RowVectorXd xSub_mean(p);
-	VectorXd lambb(n);
-	VectorXi SIndx(n);
+	VectorXi SIndx1(n);
+	SIndx1.setLinSpaced(n,0,n-1);
+	std::nth_element(SIndx1.data(),SIndx1.data()+h0,SIndx1.data()+SIndx1.size(),IdLess(lambb.data()));
 
-	for(int i=0;i<h0;i++) xSub.row(i)=x.row(hindx(i));
-	SIndx.setLinSpaced(n,0,n-1);	
+	MatrixXd xSub(h0,p);
+	for(int i=0;i<h0;i++) 	xSub.row(i)=x.row(SIndx1(i));
+	RowVectorXd xSub_mean(p);
 	xSub_mean=xSub.colwise().mean();	
 	xSub.rowwise()-=xSub_mean;
-	xful.rowwise()-=xSub_mean;
-
-	MatrixXd Sig=xSub.adjoint()*xSub;
+	MatrixXd Sig(p,p);
+	Sig.setZero().selfadjointView<Lower>().rankUpdate(xSub.transpose());
 	Sig.array()/=(double)(h0-1);
-
-	LDLT<MatrixXd> chol=Sig.ldlt();
-	chol.solveInPlace(b);
-	VectorXd md=((xful*b).cwiseProduct(xful)).rowwise().sum();	//
-
-	std::nth_element(SIndx.data(),SIndx.data()+h,SIndx.data()+SIndx.size(),IdLess(md.data()));
-	hindx.head(h)=SIndx.head(h);
-	return(chol.vectorD().array().log().sum()*2);	
-} 
-MatrixXi DepType(const MatrixXd& x,const MatrixXd& q,const int& calcM,const VectorXi& hlst,VectorXi& ofun,VectorXi& oint){
-	int n=x.rows();
-	int p=x.cols();
-	int numbiter=0;
-	int S=q.cols();
-	double lodet0=0;
-	double lodet1=0;
-	double tol=1e-3;
-	double best_fun;
-	int contwhil=1;
-	int h0=(n+1)/2;
-	int hl=hlst.rows();
-	int h=0;
-	VectorXi SIndx1(n);
-	MatrixXi FIndx1=MatrixXi::Zero(n,hl);
-	for(int j=0;j<hl;++j){
-		h=hlst(j);
-		best_fun=10*p;
-		for(int i=0;i<S;++i){
-			Map<const MatrixXd>qi(q.col(i).data(),p,p);
-			SIndx1.head(h0)=Finitset(x,qi,calcM);
-			lodet0=CStep(x,SIndx1,h0,h);
-			lodet0+=10;
-			contwhil=1;
-			numbiter=0;
-			while(contwhil){  
-				lodet1=CStep(x,SIndx1,h,h);
-				((lodet0-lodet1)<tol)?contwhil=0:contwhil=1;
-				lodet0=lodet1;
-				numbiter++;
-			}
-			if(lodet0<best_fun){
-				ofun(j)=i;
-				best_fun=lodet0;
-				oint(j)=numbiter;
-				FIndx1.col(j).head(h)=SIndx1.head(h).array()+1;			
-			}
+	SelfAdjointEigenSolver<Eigen::MatrixXd> solvedSig(Sig);
+	if(solvedSig.eigenvalues().minCoeff()>1e-8){
+		Data2=x;
+		Data2.rowwise()-=xSub_mean;	
+		Data2*=solvedSig.eigenvectors();
+		Data2*=solvedSig.eigenvalues().cwiseSqrt().asDiagonal().inverse();
+		lambb=Data2.cwiseAbs2().rowwise().sum();
+		SIndx1.setLinSpaced(n,0,n-1);
+		std::nth_element(SIndx1.data(),SIndx1.data()+h0,SIndx1.data()+SIndx1.size(),IdLess(lambb.data()));
+	} else {
+		Svol=1;
+	}
+	return(SIndx1.head(h0));
+}
+void cov_CStep(
+			VectorXi& dIn,
+			const MatrixXd& x,
+			const int& h,
+			const int& h0,
+			int& w3,
+			double& w1
+		){
+	const int n=x.rows(),p=x.cols();
+	double w0;
+	int w2=1,i;
+	MatrixXd xSub(h,p);
+	MatrixXd Data2(n,p);
+	for(i=0;i<h0;i++) 	xSub.row(i)=x.row(dIn(i));
+	RowVectorXd xSub_mean(p);
+	xSub_mean=xSub.topRows(h0).colwise().mean();	
+	xSub.topRows(h0).rowwise()-=xSub_mean;
+	MatrixXd Sig(p,p);
+	Sig.setZero().selfadjointView<Lower>().rankUpdate(xSub.topRows(h0).transpose());
+	Sig.array()/=(double)(h0-1);
+	SelfAdjointEigenSolver<Eigen::MatrixXd> solved(Sig);
+	w1=solved.eigenvalues().minCoeff();
+	VectorXd dP(n);	
+	w3=0;
+	w1=std::numeric_limits<double>::max();
+	Data2=x;
+	Data2.rowwise()-=xSub_mean;	
+	Data2*=solved.eigenvectors();
+	Data2*=solved.eigenvalues().cwiseSqrt().asDiagonal().inverse();
+	dP=Data2.cwiseAbs2().rowwise().sum();
+	while(w2){	
+		dIn.setLinSpaced(n,0,n-1);
+		std::nth_element(dIn.data(),dIn.data()+h,dIn.data()+dIn.size(),IdLess(dP.data()));
+		for(i=0;i<h;i++) 	xSub.row(i)=x.row(dIn(i));
+		xSub_mean=xSub.colwise().mean();	
+		xSub.rowwise()-=xSub_mean;
+		Sig.setZero().selfadjointView<Lower>().rankUpdate(xSub.transpose());
+		Sig.array()/=(double)(h-1);
+		SelfAdjointEigenSolver<Eigen::MatrixXd> solved(Sig);
+		w3++;
+		if(solved.eigenvalues().minCoeff()>1e-8){
+			w0=w1;
+			w1=solved.eigenvalues().array().log().sum();
+			Data2=x;
+			Data2.rowwise()-=xSub_mean;	
+			Data2*=solved.eigenvectors();
+			Data2*=solved.eigenvalues().cwiseSqrt().asDiagonal().inverse();
+			dP=Data2.cwiseAbs2().rowwise().sum();
+			(w0-w1<1e-6)?(w2=0):(w2=1);
+		} else {
+			w2=0;
+			w1=solved.eigenvalues().array().log().sum();
 		}
 	}
-	return(FIndx1.array());
-}
+}  
+VectorXi CStepAll(
+				const MatrixXd& xi,
+				const int& hf,
+				int& wo,
+				int& nit,
+				MatrixXi& hsup,
+				double& bestobjfun
+			){
+	const int n=xi.rows(),p=xi.cols(),h0=hsup.rows(),S=hsup.cols();	
+	int w3;
+	double objfun;
+	bestobjfun=std::numeric_limits<double>::max();
+	VectorXi dIn(n);
+	VectorXi dOut(hf);
+	for(int i=0;i<S;i++){
+		dIn.head(h0)=hsup.col(i);
+		cov_CStep(dIn,xi,hf,h0,w3,objfun);
+		if(objfun<bestobjfun){
+			wo=i;
+			nit=w3;
+			bestobjfun=objfun;
+			dOut=dIn.head(hf);
+		}
+	}
+	return(dOut);
+}  
 extern "C"{
-	void R_FastR(int* n,int* p,double* X,double* Q,int* cMet,int* h,int* hL,int* wM,int* BestD,int* BestI,int* pQ){
-		const int CalcMet=*cMet;
-		const int q=(*p)*(*p);
-		const int hlt=*hL;
-		VectorXi bdt(hlt);
-		VectorXi bit(hlt);
+	void R_FastR(
+			int* n,		//1
+			int* p,		//2
+			double* X,	//3
+			double* Q,	//4
+			int* cMet,	//5
+			int* h,		//6
+			int* hL,	//7
+			int* wM,	//8
+			int* BestD,	//9
+			int* BestI,	//10
+			int* pQ,	//11
+			int* svol,	//12
+			double* obj,	//13
+			int* wMef,	//14
+			int* Hmin,	//15
+			int* exft	//16				//int* mW		//14
+		){
+		const int CalcMet=*cMet,q=(*p)*(*p),hlt=*hL,hmin=*Hmin;
+		VectorXd objy(hlt);
 		VectorXi hi=Map<VectorXi>(h,hlt);
 		MatrixXd xi=Map<MatrixXd>(X,*n,*p);	
 		MatrixXd qi=Map<MatrixXd>(Q,q,*pQ);
-		MatrixXi Wm=DepType(xi,qi,CalcMet,hi,bdt,bit);
-		Map<MatrixXi>(wM,Wm.rows(),Wm.cols())=Wm;
-		Map<VectorXi>(BestD,hlt)=bdt.array()+1;		//which one was chosen
-		Map<VectorXi>(BestI,hlt)=bit.array()+1;		//nit
+		MatrixXi hsub=MatrixXi::Zero(*n,hlt);
+		MatrixXi hsup(hmin,*pQ);
+		VectorXi bit(hlt);
+		VectorXi bdt(hlt);
+		VectorXi Svol=VectorXi::Zero(*pQ);
+		for(int i=0;i<*pQ;++i){
+			Map<const MatrixXd>q2(qi.col(i).data(),*p,*p);
+			hsup.col(i)=Finitset(xi,q2,CalcMet,hmin,Svol(i));	
+		}
+		//Map<MatrixXi>(mW,hi(0),*pQ)=hsup.array()+1;	//all the indexes.
+		Map<VectorXi>(svol,*pQ)=Svol;			
+		int wef,ismax=Svol.maxCoeff(&wef);
+		if(ismax<1){
+			for(int i=0;i<hlt;i++)	hsub.col(i).head(hi(i))=CStepAll(xi,hi(i),bdt(i),bit(i),hsup,objy(i));
+			Map<VectorXi>(BestD,hlt)=bdt.array()+1;		//which one was chosen
+			Map<VectorXi>(BestI,hlt)=bit.array()+1;		//nit
+			Map<MatrixXi>(wM,*n,hlt)=hsub.array()+1;	//all the indexes.
+			Map<VectorXd>(obj,hlt)=objy;
+		} else {
+			Map<VectorXi>(wMef,*Hmin)=hsup.col(wef).array()+1;
+			*exft=1;
+			bdt(0)=wef;
+			Map<VectorXi>(BestD,hlt)=bdt.array()+1;		//which one was chosen
+		}
 	}
 }
