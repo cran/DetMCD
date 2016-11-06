@@ -46,8 +46,8 @@ DetMCD<-function(X,h=NULL,alpha=0.75,scale_est="Auto",tol=1e-7){#h=NULL;alpha=0.
 		out3<-lapply(1:length(h[h<n]),DetMCD_RW,Xw=X,scale_est=scale_est,out2=out2,alpha=alpha,hlst=h)
 		if(max(h)==n) out3[[length(out3)+1]]<-DetMCD_RW(ll=1,hlst=min(h),Xw=X,out2=NULL,scale_est=scale_est,alpha=1)
 	} else {
-		out2<-vector("list",1)
-		out2[[1]]<-DetMCD_RW(1,hlst=min(h),Xw=X,out2=NULL,scale_est=scale_est,alpha=1)
+		out3<-vector("list",1)
+		out3[[1]]<-DetMCD_RW(1,hlst=min(h),Xw=X,out2=NULL,scale_est=scale_est,alpha=1)
 	}
 	if(length(h)>1){
 		outf<-xtractR_M(out3,X=X)
