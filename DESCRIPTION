@@ -2,8 +2,8 @@ Package: DetMCD
 Type: Package
 Title: Implementation of the DetMCD Algorithm (Robust and Deterministic
         Estimation of Location and Scatter)
-Version: 0.0.4
-Date: 2016-11-13
+Version: 0.0.5
+Date: 2018-05-13
 Depends: robustbase, pcaPP
 Suggests: mvtnorm, MASS
 LinkingTo: Rcpp, RcppEigen
@@ -18,6 +18,6 @@ Maintainer: Vakili Kaveh <vakili.kaveh.email@gmail.com>
 Author: Vakili Kaveh [aut, cre],
   Mia Hubert [ths]
 NeedsCompilation: yes
-Packaged: 2016-11-05 19:23:25 UTC; kaveh
+Packaged: 2018-05-19 11:25:32 UTC; kaveh
 Repository: CRAN
-Date/Publication: 2016-11-06 00:00:15
+Date/Publication: 2018-05-19 11:49:57 UTC
